@@ -1,6 +1,6 @@
 # Reconcio
 
-Reconcio is a multi-tenant SaaS platform that automates matching incoming customer payments with open invoices, reducing manual reconciliation effort and improving cash position accuracy for Indian businesses.
+Reconcio is a platform that automates matching incoming customer payments with open invoices, reducing manual reconciliation effort and improving cash position accuracy for Indian businesses.
 
 ## Features
 
