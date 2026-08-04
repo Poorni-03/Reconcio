@@ -1,6 +1,6 @@
-# Reconcio
+# Remitpulse 
 
-Reconcio is a platform that automates matching incoming customer payments with open invoices, reducing manual reconciliation effort and improving cash position accuracy for Indian businesses.
+Remitpulse is a platform that automates matching incoming customer payments with open invoices, reducing manual reconciliation effort and improving cash position accuracy for Indian businesses.
 
 ## Features
 
@@ -49,8 +49,8 @@ Reconcio is a platform that automates matching incoming customer payments with o
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Poorni-03/Reconcio.git
-   cd Reconcio
+   git clone https://github.com/Poorni-03/Remitpulse.git
+   cd Remitpulse 
    ```
 
 2. Install backend and frontend dependencies separately:
@@ -63,4 +63,4 @@ Reconcio is a platform that automates matching incoming customer payments with o
 
 ## Project Goal
 
-Reconcio helps finance teams reduce manual reconciliation workload, improve matching accuracy, and maintain a clearer, real-time cash position.
+Remitpulse helps finance teams reduce manual reconciliation workload, improve matching accuracy, and maintain a clearer, real-time cash position.
