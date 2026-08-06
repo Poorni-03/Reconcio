@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import apiClient from "../api/client";
 import Layout from "../components/Layout";
 
@@ -12,10 +12,15 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [file, setFile] = useState(null);
   const [uploadMsg, setUploadMsg] = useState("");
+  const [actionMsg, setActionMsg] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   async function loadInvoices() {
-    const res = await apiClient.get("/invoices", { params: statusFilter ? { status: statusFilter } : {} });
+    const res = await apiClient.get("/invoices", {
+      params: statusFilter ? { status: statusFilter } : {},
+    });
     setInvoices(res.data);
   }
 
@@ -23,24 +28,29 @@ export default function Invoices() {
     loadInvoices();
   }, [statusFilter]);
 
-  async function handleUpload(e) {
-    e.preventDefault();
-    if (!file) {
-      setUploadMsg("Please select a CSV file first.");
-      return;
-    }
+  async function handleFileSelected(e) {
+    const selected = e.target.files[0];
+    if (!selected) return;
+    setUploading(true);
     setUploadMsg("Uploading...");
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", selected);
     try {
       const res = await apiClient.post("/invoices/upload", formData);
       setUploadMsg(`Created: ${res.data.created}, Skipped: ${res.data.skipped}`);
-      setFile(null);
       loadInvoices();
     } catch (err) {
-      console.error("Upload error:", err);
-      setUploadMsg(err.response?.data?.error || err.message || "Upload failed");
+      setUploadMsg(err.response?.data?.error || "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function handleCancel() {
+    setUploading(false);
+    setActionMsg("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function handleDelete(id) {
@@ -73,13 +83,29 @@ export default function Invoices() {
         </select>
       </div>
 
-      <form onSubmit={handleUpload} className="bg-white p-4 rounded-lg shadow border mb-6 flex items-center gap-3">
-        <input type="file" accept=".csv" onChange={(e) => setFile(e.target.files[0])} className="text-sm" />
-        <button type="submit" className="bg-slate-900 text-white px-4 py-1.5 rounded text-sm hover:bg-slate-800">
-          Upload CSV
+    <div className="bg-white p-4 rounded-lg shadow border mb-4 flex items-center gap-3">
+        <input
+          type="file"
+          accept=".csv"
+          ref={fileInputRef}
+          onChange={handleFileSelected}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current.click()}
+          disabled={uploading}
+          className="bg-slate-900 text-white px-4 py-1.5 rounded text-sm hover:bg-slate-800 disabled:opacity-50"
+        >
+          {uploading ? "Uploading..." : "Upload"}
         </button>
-        {uploadMsg && <span className="text-sm text-gray-600">{uploadMsg}</span>}
-      </form>
+        <button
+          onClick={handleCancel}
+          className="border border-gray-300 px-4 py-1.5 rounded text-sm hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        {actionMsg && <span className="text-sm text-gray-600">{actionMsg}</span>}
+      </div>
 
       <div className="bg-white rounded-lg shadow border overflow-hidden">
         <table className="w-full text-sm">
@@ -102,13 +128,20 @@ export default function Invoices() {
                 <td className="px-4 py-2">₹{fmt(inv.amountDueInr)}</td>
                 <td className="px-4 py-2">₹{fmt(inv.balanceInr)}</td>
                 <td className="px-4 py-2">
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[inv.status] || ""}`}>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs ${statusColors[inv.status] || ""}`}
+                  >
                     {inv.status}
                   </span>
                 </td>
-                <td className="px-4 py-2">{new Date(inv.dueDate).toLocaleDateString()}</td>
                 <td className="px-4 py-2">
-                  <button onClick={() => handleDelete(inv._id)} className="text-red-600 text-xs hover:underline">
+                  {new Date(inv.dueDate).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    onClick={() => handleDelete(inv._id)}
+                    className="text-red-600 text-xs hover:underline"
+                  >
                     Delete
                   </button>
                 </td>

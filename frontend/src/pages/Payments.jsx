@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import apiClient from "../api/client";
 import Layout from "../components/Layout";
 
@@ -13,6 +13,9 @@ export default function Payments() {
   const [file, setFile] = useState(null);
   const [uploadMsg, setUploadMsg] = useState("");
   const [actionMsg, setActionMsg] = useState("");
+  const fileInputRef = useRef(null);
+  const remittanceInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   async function loadPayments() {
     const res = await apiClient.get("/payments");
@@ -23,31 +26,55 @@ export default function Payments() {
     loadPayments();
   }, []);
 
-async function handleUpload(e) {
-    e.preventDefault();
-    if (!file) {
-      setUploadMsg("Please select a CSV file first.");
-      return;
-    }
-    setUploadMsg("Uploading...");
+  async function handleFileSelected(e) {
+    const selected = e.target.files[0];
+    if (!selected) return;
+
+    setUploading(true);
+    setActionMsg("Uploading...");
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", selected);
+
     try {
-      const res = await apiClient.post("/payments/upload", formData);
-      setUploadMsg(`Created: ${res.data.created}, Skipped: ${res.data.skipped}`);
-      setFile(null);
+      const ext = selected.name.split(".").pop().toLowerCase();
+      if (ext === "csv") {
+        const res = await apiClient.post("/payments/upload", formData);
+        setActionMsg(
+          `Created: ${res.data.created}, Skipped: ${res.data.skipped}`,
+        );
+      } else {
+        const res = await apiClient.post(
+          "/payments/upload-remittance",
+          formData,
+        );
+        setActionMsg(
+          `✅ Remittance processed: ₹${res.data.payment.amountInr} from ${res.data.payment.payerName || "unknown"}`,
+        );
+      }
       loadPayments();
     } catch (err) {
-      console.error("Upload error:", err);
-      setUploadMsg(err.response?.data?.error || err.message || "Upload failed");
+      setActionMsg(err.response?.data?.error || "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function handleCancel() {
+    setUploading(false);
+    setActionMsg("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function runTier1(id) {
     setActionMsg("Running Tier 1...");
     try {
       const res = await apiClient.post(`/matching/tier1/${id}`);
-      setActionMsg(res.data.matched ? "✅ Tier 1 matched!" : `No Tier 1 match: ${res.data.reason}`);
+      setActionMsg(
+        res.data.matched
+          ? "✅ Tier 1 matched!"
+          : `No Tier 1 match: ${res.data.reason}`,
+      );
       loadPayments();
     } catch (err) {
       setActionMsg(err.response?.data?.error || "Error running Tier 1");
@@ -93,16 +120,36 @@ async function handleUpload(e) {
   return (
     <Layout>
       <h1 className="text-2xl font-bold mb-6">Payments</h1>
-
-      <form onSubmit={handleUpload} className="bg-white p-4 rounded-lg shadow border mb-4 flex items-center gap-3">
-        <input type="file" accept=".csv" onChange={(e) => setFile(e.target.files[0])} className="text-sm" />
-        <button type="submit" className="bg-slate-900 text-white px-4 py-1.5 rounded text-sm hover:bg-slate-800">
-          Upload CSV
+      <div className="bg-white p-4 rounded-lg shadow border mb-4 flex items-center gap-3">
+        <input
+          type="file"
+          accept=".csv,.pdf,.txt"
+          ref={fileInputRef}
+          onChange={handleFileSelected}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current.click()}
+          disabled={uploading}
+          className="bg-slate-900 text-white px-4 py-1.5 rounded text-sm hover:bg-slate-800 disabled:opacity-50"
+        >
+          {uploading ? "Uploading..." : "Upload (CSV / PDF / Email)"}
         </button>
-        {uploadMsg && <span className="text-sm text-gray-600">{uploadMsg}</span>}
-      </form>
-
-      {actionMsg && <div className="bg-blue-50 text-blue-700 p-3 rounded mb-4 text-sm">{actionMsg}</div>}
+        <button
+          onClick={handleCancel}
+          className="border border-gray-300 px-4 py-1.5 rounded text-sm hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        {actionMsg && (
+          <span className="text-sm text-gray-600">{actionMsg}</span>
+        )}
+      </div>
+      {actionMsg && (
+        <div className="bg-blue-50 text-blue-700 p-3 rounded mb-4 text-sm">
+          {actionMsg}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow border overflow-hidden">
         <table className="w-full text-sm">
@@ -124,22 +171,33 @@ async function handleUpload(e) {
                 <td className="px-4 py-2">₹{fmt(p.amountInr)}</td>
                 <td className="px-4 py-2 max-w-xs truncate">{p.rawMemoText}</td>
                 <td className="px-4 py-2">
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[p.status] || ""}`}>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs ${statusColors[p.status] || ""}`}
+                  >
                     {p.status}
                   </span>
                 </td>
                 <td className="px-4 py-2 space-x-2">
                   {p.status === "UNMATCHED" && (
                     <>
-                      <button onClick={() => runTier1(p._id)} className="text-blue-600 text-xs hover:underline">
+                      <button
+                        onClick={() => runTier1(p._id)}
+                        className="text-blue-600 text-xs hover:underline"
+                      >
                         Run Tier 1
                       </button>
-                      <button onClick={() => runTier2(p._id)} className="text-purple-600 text-xs hover:underline">
+                      <button
+                        onClick={() => runTier2(p._id)}
+                        className="text-purple-600 text-xs hover:underline"
+                      >
                         Run Tier 2
                       </button>
                     </>
                   )}
-                  <button onClick={() => handleDelete(p._id)} className="text-red-600 text-xs hover:underline">
+                  <button
+                    onClick={() => handleDelete(p._id)}
+                    className="text-red-600 text-xs hover:underline"
+                  >
                     Delete
                   </button>
                 </td>

@@ -1,6 +1,9 @@
 const fs = require("fs");
 const Payment = require("../models/Payment");
 const { parseCsv } = require("../services/csvParser.service");
+const path = require("path");
+const { extractTextFromPdf } = require("../services/pdfParser.service");
+const { extractPaymentDetails, generateEmbedding } = require("../services/OpenAI.service");
 
 function parseIndianDate(dateString) {
   const cleaned = String(dateString).trim();
@@ -125,4 +128,48 @@ async function deletePaymentById(req, res) {
   }
 }
 
-module.exports = { uploadPayments, listPayments, updatePayment, deletePaymentById };
+async function uploadRemittance(req, res) {
+  try {
+    let rawText = "";
+
+    if (req.file) {
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      if (ext === ".pdf") {
+        const result = await extractTextFromPdf(req.file.path);
+        rawText = result.text;
+      } else {
+        rawText = fs.readFileSync(req.file.path, "utf-8");
+      }
+      fs.unlinkSync(req.file.path);
+    } else if (req.body.emailText) {
+      rawText = req.body.emailText;
+    } else {
+      return res.status(400).json({ error: "Provide either a PDF file or emailText in body" });
+    }
+
+    if (!rawText || rawText.trim().length === 0) {
+      return res.status(400).json({ error: "Could not extract any text from the remittance" });
+    }
+
+    const extracted = await extractPaymentDetails(rawText);
+
+    const totalAmount = extracted.amountInr || (extracted.lineItems || []).reduce((sum, li) => sum + (li.amountApplied || 0), 0);
+
+    const payment = await Payment.create({
+      organizationId: req.user.organizationId,
+      utrOrRrnNumber: extracted.utrOrRrnNumber || null,
+      amountInr: totalAmount,
+      paymentDate: new Date(),
+      payerName: extracted.customerName || null,
+      rawMemoText: rawText.substring(0, 2000),
+      extractedJson: extracted,
+    });
+
+    return res.status(201).json({ payment, extracted });
+  } catch (error) {
+    console.error("Remittance upload error:", error);
+    return res.status(500).json({ error: "Something went wrong processing the remittance" });
+  }
+}
+
+module.exports = { uploadPayments, listPayments, updatePayment, deletePaymentById, uploadRemittance};
