@@ -16,6 +16,7 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState("");
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const abortControllerRef = useRef(null);
 
   async function loadInvoices() {
     const res = await apiClient.get("/invoices", {
@@ -35,21 +36,33 @@ export default function Invoices() {
     setUploadMsg("Uploading...");
     const formData = new FormData();
     formData.append("file", selected);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const res = await apiClient.post("/invoices/upload", formData);
+      const res = await apiClient.post("/invoices/upload", formData, { signal: controller.signal });
       setUploadMsg(`Created: ${res.data.created}, Skipped: ${res.data.skipped}`);
       loadInvoices();
     } catch (err) {
-      setUploadMsg(err.response?.data?.error || "Upload failed");
+      if (err.name === "CanceledError" || err.code === "ERR_CANCELED") {
+        setUploadMsg("Upload cancelled.");
+      } else {
+        setUploadMsg(err.response?.data?.error || "Upload failed");
+      }
     } finally {
       setUploading(false);
+      abortControllerRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
   function handleCancel() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setUploading(false);
-    setActionMsg("");
+    setUploadMsg("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 

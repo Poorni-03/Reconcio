@@ -16,6 +16,7 @@ export default function Payments() {
   const fileInputRef = useRef(null);
   const remittanceInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const abortControllerRef = useRef(null);
 
   async function loadPayments() {
     const res = await apiClient.get("/payments");
@@ -35,32 +36,37 @@ export default function Payments() {
     const formData = new FormData();
     formData.append("file", selected);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const ext = selected.name.split(".").pop().toLowerCase();
+      const endpoint = ext === "csv" ? "/payments/upload" : "/payments/upload-remittance";
+      const res = await apiClient.post(endpoint, formData, { signal: controller.signal });
+
       if (ext === "csv") {
-        const res = await apiClient.post("/payments/upload", formData);
-        setActionMsg(
-          `Created: ${res.data.created}, Skipped: ${res.data.skipped}`,
-        );
+        setActionMsg(`Created: ${res.data.created}, Skipped: ${res.data.skipped}`);
       } else {
-        const res = await apiClient.post(
-          "/payments/upload-remittance",
-          formData,
-        );
-        setActionMsg(
-          `✅ Remittance processed: ₹${res.data.payment.amountInr} from ${res.data.payment.payerName || "unknown"}`,
-        );
+        setActionMsg(`✅ Remittance processed: ₹${res.data.payment.amountInr} from ${res.data.payment.payerName || "unknown"}`);
       }
       loadPayments();
     } catch (err) {
-      setActionMsg(err.response?.data?.error || "Upload failed");
+      if (err.name === "CanceledError" || err.code === "ERR_CANCELED") {
+        setActionMsg("Upload cancelled.");
+      } else {
+        setActionMsg(err.response?.data?.error || "Upload failed");
+      }
     } finally {
       setUploading(false);
+      abortControllerRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
   function handleCancel() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setUploading(false);
     setActionMsg("");
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -133,7 +139,7 @@ export default function Payments() {
           disabled={uploading}
           className="bg-slate-900 text-white px-4 py-1.5 rounded text-sm hover:bg-slate-800 disabled:opacity-50"
         >
-          {uploading ? "Uploading..." : "Upload (CSV / PDF / Email)"}
+          {uploading ? "Uploading..." : "Upload"}
         </button>
         <button
           onClick={handleCancel}
